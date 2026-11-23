@@ -24,9 +24,14 @@ object SemVerComparator {
         installedCode: Int? = null,
         remoteCode: Int? = null
     ): Boolean {
-        val cmp = compare(remoteVersion, installedVersion)
-        if (cmp > 0) return true
-        if (cmp < 0) return false
+        val normRemote = normalizeVersion(remoteVersion)
+        val normInstalled = normalizeVersion(installedVersion)
+        val hasNumericRemote = normRemote.split(".").any { it.toIntOrNull() != null }
+        if (hasNumericRemote && normInstalled.isNotBlank()) {
+            val cmp = compare(normRemote, normInstalled)
+            if (cmp > 0) return true
+            if (cmp < 0) return false
+        }
         if (installedCode != null && remoteCode != null && remoteCode > installedCode) {
             return true
         }
@@ -52,6 +57,7 @@ object SemVerComparator {
         val host = uri.host?.lowercase() ?: return false
         return host == "github.com" ||
             host == "api.github.com" ||
+            host == "raw.githubusercontent.com" ||
             host == "objects.githubusercontent.com" ||
             host == "release-assets.githubusercontent.com" ||
             host.endsWith(".githubusercontent.com")

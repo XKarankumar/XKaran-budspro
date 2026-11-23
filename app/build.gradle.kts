@@ -20,8 +20,9 @@ val appVersionMinor = versionProps.getProperty("VERSION_MINOR", "1").toInt()
 val appVersionPatch = versionProps.getProperty("VERSION_PATCH", "0").toInt()
 val appVersionCode = versionProps.getProperty("VERSION_CODE", "2").toInt()
 val appVersionName = "$appVersionMajor.$appVersionMinor.$appVersionPatch"
-val githubOwner = versionProps.getProperty("GITHUB_OWNER", "karan")
-val githubRepo = versionProps.getProperty("GITHUB_REPO", "karan-buds-premium")
+val githubOwner = versionProps.getProperty("GITHUB_OWNER", "XKarankumar")
+val githubRepo = versionProps.getProperty("GITHUB_REPO", "Karan-buds-live-pro")
+val githubBranch = versionProps.getProperty("GITHUB_BRANCH", "main")
 
 android {
   namespace = "com.example"
@@ -36,6 +37,7 @@ android {
 
     buildConfigField("String", "GITHUB_OWNER", "\"$githubOwner\"")
     buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
+    buildConfigField("String", "GITHUB_BRANCH", "\"$githubBranch\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

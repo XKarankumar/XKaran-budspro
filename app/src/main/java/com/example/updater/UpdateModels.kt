@@ -14,12 +14,20 @@ data class ReleaseInfo(
     val apkFileName: String?,
     val apkSizeBytes: Long?,
     val sha256ChecksumUrl: String?,
-    val expectedSha256: String?
+    val expectedSha256: String?,
+    val minSdk: Int? = null,
+    val isMandatory: Boolean = false
 )
 
 sealed class UpdateCheckState {
     data object Idle : UpdateCheckState()
     data object Checking : UpdateCheckState()
+    data class NoReleasesPublished(
+        val currentVersion: String,
+        val repoSlug: String,
+        val releasesUrl: String,
+        val lastCheckedMs: Long
+    ) : UpdateCheckState()
     data class UpToDate(
         val currentVersion: String,
         val latestVersion: String,

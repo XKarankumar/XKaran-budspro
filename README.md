@@ -41,7 +41,8 @@ KARAN BUDS PREMIUM is a flagship-grade Bluetooth earbuds companion application f
    - Respects Android system touch vibration and Battery Saver mode, with per-feature toggles (Connection, ANC/Spatial, UI/Theme, Updates, Low Battery & Errors) and an interactive Tactile Cue Preview Lab.
 
 8. **Verified GitHub Releases Auto-Updater (`com.example.updater`)**
-   - Checks official GitHub Releases via `https://api.github.com/repos/<owner>/<repo>/releases/latest` and compares SemVer + `versionCode`.
+   - Central repository config in `version.properties` (`XKarankumar/Karan-buds-live-pro`, branch `main`) and structured manifest schema (`update-manifest.json` + `UpdateManifestParser`).
+   - Checks official GitHub Releases API and gracefully displays `"No releases published yet"` when a repository has zero published releases (never treating an empty release list as a network failure).
    - Resumable HTTP `Range` downloads (Pause / Resume / Retry), mandatory SHA-256 verification, package identity & signing certificate verification, and safe handoff via `FileProvider` to Android's native Package Installer (never silent/bypassed installs).
 
 9. **Real Hardware Rule**
@@ -55,20 +56,20 @@ KARAN BUDS PREMIUM is a flagship-grade Bluetooth earbuds companion application f
 - `com.example.bluetooth`: Device state, brand detection, A2DP/HFP/LE Audio, BLE GATT
 - `com.example.audio`: 10-band Equalizer, Spatializer, Acoustic Audition player
 - `com.example.haptics`: `HapticsManager`, `HapticEvent`, `HapticsSettings`, intensity scaling
-- `com.example.updater`: `GitHubReleaseChecker`, `ApkDownloaderAndVerifier`, `SemVerComparator`, `BuiltInChangelog`
+- `com.example.updater`: `GitHubReleaseChecker`, `ApkDownloaderAndVerifier`, `SemVerComparator`, `UpdateManifest`, `BuiltInChangelog`
 - `com.example.data`: Room `KaranBudsDatabase` (with schema migrations) & DataStore `KaranPreferencesRepository`
 - `com.example.ui`: ViewModel, theme system (`KaranBudsTheme`), reusable glass components & screens
 
 ### Releasing a New Version
-1. Update `version.properties` at the repository root (`VERSION_MAJOR`, `VERSION_MINOR`, `VERSION_PATCH`, `VERSION_CODE`, `GITHUB_OWNER`, `GITHUB_REPO`).
-2. Add release highlights to `CHANGELOG.md` and `BuiltInChangelog` (`UpdateModels.kt`).
+1. Update `version.properties` at the repository root (`VERSION_MAJOR`, `VERSION_MINOR`, `VERSION_PATCH`, `VERSION_CODE`, `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_BRANCH`).
+2. Update `update-manifest.json` and `CHANGELOG.md` + `BuiltInChangelog` (`UpdateModels.kt`).
 3. If adding Room tables/columns, increment `@Database(version = ...)` in `KaranBudsDatabase.kt` and add a `Migration(old, new)` so user settings and history are preserved.
 4. Commit and push to `main`, then create and push a matching version tag:
    ```bash
    git tag v1.1.0
    git push origin v1.1.0
    ```
-5. `.github/workflows/release.yml` automatically runs tests, builds the APK, computes `.sha256` and `version.json`, and publishes a GitHub Release ready for the in-app Update Center.
+5. `.github/workflows/release.yml` automatically runs tests, builds the APK, computes `.sha256`, `version.json`, and `update-manifest.json`, and publishes a GitHub Release to `https://github.com/XKarankumar/Karan-buds-live-pro/releases`.
 
 ### Optional GitHub Actions Signing Secrets
 To publish production-signed Release APKs from CI without committing keys:

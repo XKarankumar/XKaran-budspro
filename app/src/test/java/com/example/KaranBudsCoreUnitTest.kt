@@ -9,6 +9,7 @@ import com.example.data.prefs.ListeningMode
 import com.example.haptics.HapticIntensity
 import com.example.updater.BuiltInChangelog
 import com.example.updater.SemVerComparator
+import com.example.updater.UpdateRepositoryConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -50,6 +51,17 @@ class KaranBudsCoreUnitTest {
     }
 
     @Test
+    fun `central update config points to XKarankumar Karan-buds-live-pro`() {
+        assertEquals("XKarankumar", UpdateRepositoryConfig.defaultOwner)
+        assertEquals("Karan-buds-live-pro", UpdateRepositoryConfig.defaultRepo)
+        assertEquals("main", UpdateRepositoryConfig.defaultBranch)
+        assertEquals(
+            "https://github.com/XKarankumar/Karan-buds-live-pro/releases",
+            UpdateRepositoryConfig.releasesPageUrl()
+        )
+    }
+
+    @Test
     fun `semver comparator accurately detects newer releases and build codes`() {
         assertTrue(SemVerComparator.isRemoteNewer("1.0.0", "v1.1.0"))
         assertTrue(SemVerComparator.isRemoteNewer("1.1.0", "2.0.0"))
@@ -60,11 +72,12 @@ class KaranBudsCoreUnitTest {
 
     @Test
     fun `updater accepts only trusted https github release urls and valid slugs`() {
-        assertTrue(SemVerComparator.isValidRepoSlug("karan-buds-premium"))
+        assertTrue(SemVerComparator.isValidRepoSlug("Karan-buds-live-pro"))
         assertFalse(SemVerComparator.isValidRepoSlug("owner/repo?bad=1"))
-        assertTrue(SemVerComparator.isTrustedGitHubUrl("https://github.com/karan/karan-buds-premium/releases/download/v1.1.0/app.apk"))
+        assertTrue(SemVerComparator.isTrustedGitHubUrl("https://github.com/XKarankumar/Karan-buds-live-pro/releases/download/v1.2.0/app.apk"))
+        assertTrue(SemVerComparator.isTrustedGitHubUrl("https://raw.githubusercontent.com/XKarankumar/Karan-buds-live-pro/main/update-manifest.json"))
         assertTrue(SemVerComparator.isTrustedGitHubUrl("https://objects.githubusercontent.com/github-production-release-asset/123"))
-        assertFalse(SemVerComparator.isTrustedGitHubUrl("http://github.com/karan/app.apk"))
+        assertFalse(SemVerComparator.isTrustedGitHubUrl("http://github.com/XKarankumar/app.apk"))
         assertFalse(SemVerComparator.isTrustedGitHubUrl("https://evil.example.com/app.apk"))
     }
 

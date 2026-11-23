@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -71,6 +72,7 @@ import com.example.updater.BuiltInChangelog
 import com.example.updater.DownloadState
 import com.example.updater.ReleaseInfo
 import com.example.updater.UpdateCheckState
+import com.example.updater.UpdateRepositoryConfig
 import java.text.DateFormat
 import java.util.Date
 
@@ -144,6 +146,7 @@ fun UpdateCenterScreen(
             val latestLabel = when (updateCheckState) {
                 is UpdateCheckState.UpdateAvailable -> updateCheckState.release.versionName
                 is UpdateCheckState.UpToDate -> updateCheckState.latestVersion
+                is UpdateCheckState.NoReleasesPublished -> "None yet"
                 is UpdateCheckState.Checking -> "Checking..."
                 is UpdateCheckState.Error -> "Unavailable"
                 UpdateCheckState.Idle -> "Not checked yet"
@@ -152,9 +155,16 @@ fun UpdateCenterScreen(
             val (statusText, statusColor) = when (updateCheckState) {
                 is UpdateCheckState.Checking -> "Checking Official Release..." to karan.accent
                 is UpdateCheckState.UpdateAvailable -> "New Version Available (${updateCheckState.release.tagName})" to karan.success
+                is UpdateCheckState.NoReleasesPublished -> "No releases published yet" to karan.accent
                 is UpdateCheckState.UpToDate -> "You Are Up To Date" to karan.accent
                 is UpdateCheckState.Error -> "Check Failed" to karan.danger
                 UpdateCheckState.Idle -> "Ready to Check" to karan.textSecondary
+            }
+
+            val releasesPageUrl = when (updateCheckState) {
+                is UpdateCheckState.NoReleasesPublished -> updateCheckState.releasesUrl
+                is UpdateCheckState.UpdateAvailable -> updateCheckState.release.htmlUrl
+                else -> UpdateRepositoryConfig.releasesPageUrl(preferences.githubOwner, preferences.githubRepo)
             }
 
             GlassCard(accentGlow = statusColor) {
@@ -208,13 +218,38 @@ fun UpdateCenterScreen(
                     VersionMetricTile(
                         label = "LATEST RELEASE",
                         value = if (latestLabel.firstOrNull()?.isDigit() == true) "v$latestLabel" else latestLabel,
-                        sub = if (updateCheckState is UpdateCheckState.UpdateAvailable) {
-                            updateCheckState.release.apkSizeBytes?.let { formatBytes(it) } ?: "Official APK"
-                        } else {
-                            "GitHub Releases"
+                        sub = when (updateCheckState) {
+                            is UpdateCheckState.UpdateAvailable ->
+                                updateCheckState.release.apkSizeBytes?.let { formatBytes(it) } ?: "Official APK"
+                            is UpdateCheckState.NoReleasesPublished -> updateCheckState.repoSlug
+                            else -> "${preferences.githubOwner}/${preferences.githubRepo}"
                         },
                         modifier = Modifier.weight(1f)
                     )
+                }
+
+                if (updateCheckState is UpdateCheckState.NoReleasesPublished) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = karan.accent.copy(alpha = 0.10f),
+                        border = BorderStroke(0.8.dp, karan.accent.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.Info, contentDescription = null, tint = karan.accent, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Connected to github.com/${updateCheckState.repoSlug}, and no releases have been published yet. Future version tags will appear here automatically.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = karan.textPrimary
+                            )
+                        }
+                    }
                 }
 
                 if (updateCheckState is UpdateCheckState.Error) {
@@ -242,18 +277,39 @@ fun UpdateCenterScreen(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Button(
-                    onClick = onCheckForUpdates,
-                    enabled = updateCheckState !is UpdateCheckState.Checking,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = karan.accent, contentColor = Color.Black),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("check_updates_btn")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Check for Updates", fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = onCheckForUpdates,
+                        enabled = updateCheckState !is UpdateCheckState.Checking,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = karan.accent, contentColor = Color.Black),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("check_updates_btn")
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (updateCheckState is UpdateCheckState.Idle) "Check Updates" else "Check Again",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(releasesPageUrl)))
+                            }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.testTag("open_github_releases_btn")
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = "Open GitHub Releases", modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Releases")
+                    }
                 }
             }
         }
@@ -493,7 +549,17 @@ fun UpdateCenterScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showSourceDialog = false }) { Text("Cancel") }
+                Row {
+                    TextButton(
+                        onClick = {
+                            showSourceDialog = false
+                            onUpdateGitHubSource(BuildConfig.GITHUB_OWNER, BuildConfig.GITHUB_REPO)
+                        }
+                    ) {
+                        Text("Reset Official")
+                    }
+                    TextButton(onClick = { showSourceDialog = false }) { Text("Cancel") }
+                }
             }
         )
     }

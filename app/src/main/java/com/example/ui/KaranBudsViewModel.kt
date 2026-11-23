@@ -38,6 +38,7 @@ import com.example.ui.theme.PopupStyle
 import com.example.ui.theme.ThemePreset
 import com.example.updater.ApkVerificationResult
 import com.example.updater.DownloadState
+import com.example.updater.ReleaseFetchOutcome
 import com.example.updater.ReleaseInfo
 import com.example.updater.SemVerComparator
 import com.example.updater.UpdateCheckState
@@ -672,8 +673,9 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
             val now = System.currentTimeMillis()
             prefsRepo.setLastUpdateCheckedMs(now)
 
-            releaseChecker.fetchLatestRelease(owner, repo)
-                .onSuccess { release ->
+            when (val outcome = releaseChecker.fetchLatestRelease(owner, repo)) {
+                is ReleaseFetchOutcome.Found -> {
+                    val release = outcome.release
                     val isNewer = SemVerComparator.isRemoteNewer(
                         installedVersion = BuildConfig.VERSION_NAME,
                         remoteVersion = release.versionName,
@@ -720,16 +722,26 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                 }
-                .onFailure { err ->
-                    val message = err.localizedMessage ?: "Unable to reach GitHub Releases."
+
+                is ReleaseFetchOutcome.NoReleasesPublished -> {
+                    _updateCheckState.value = UpdateCheckState.NoReleasesPublished(
+                        currentVersion = BuildConfig.VERSION_NAME,
+                        repoSlug = "${outcome.owner}/${outcome.repo}",
+                        releasesUrl = outcome.releasesUrl,
+                        lastCheckedMs = now
+                    )
+                }
+
+                is ReleaseFetchOutcome.Error -> {
                     _updateCheckState.value = UpdateCheckState.Error(
-                        message = message,
+                        message = outcome.message,
                         lastCheckedMs = now
                     )
                     if (manual) {
                         hapticsManager.trigger(HapticEvent.ERROR)
                     }
                 }
+            }
         }
     }
 

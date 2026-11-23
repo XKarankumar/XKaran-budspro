@@ -218,8 +218,24 @@ class KaranPreferencesRepository(private val context: Context) {
             lastUpdateCheckedMs = prefs[Keys.UPDATE_LAST_CHECKED_MS] ?: 0L,
             lastNotifiedUpdateTag = prefs[Keys.UPDATE_LAST_NOTIFIED_TAG] ?: "",
             dismissedUpdateTag = prefs[Keys.UPDATE_DISMISSED_TAG] ?: "",
-            githubOwner = prefs[Keys.UPDATE_GITHUB_OWNER]?.takeIf { it.isNotBlank() } ?: BuildConfig.GITHUB_OWNER,
-            githubRepo = prefs[Keys.UPDATE_GITHUB_REPO]?.takeIf { it.isNotBlank() } ?: BuildConfig.GITHUB_REPO
+            githubOwner = run {
+                val rawOwner = prefs[Keys.UPDATE_GITHUB_OWNER]?.trim().orEmpty()
+                val rawRepo = prefs[Keys.UPDATE_GITHUB_REPO]?.trim().orEmpty()
+                if (rawOwner.isBlank() || (rawOwner.equals("karan", ignoreCase = true) && rawRepo.equals("karan-buds-premium", ignoreCase = true))) {
+                    BuildConfig.GITHUB_OWNER
+                } else {
+                    rawOwner
+                }
+            },
+            githubRepo = run {
+                val rawOwner = prefs[Keys.UPDATE_GITHUB_OWNER]?.trim().orEmpty()
+                val rawRepo = prefs[Keys.UPDATE_GITHUB_REPO]?.trim().orEmpty()
+                if (rawRepo.isBlank() || (rawOwner.equals("karan", ignoreCase = true) && rawRepo.equals("karan-buds-premium", ignoreCase = true))) {
+                    BuildConfig.GITHUB_REPO
+                } else {
+                    rawRepo
+                }
+            }
         )
     }
 
@@ -415,6 +431,13 @@ class KaranPreferencesRepository(private val context: Context) {
         context.karanDataStore.edit {
             it[Keys.UPDATE_GITHUB_OWNER] = owner.trim()
             it[Keys.UPDATE_GITHUB_REPO] = repo.trim()
+        }
+    }
+
+    suspend fun resetGitHubSourceToDefault() {
+        context.karanDataStore.edit {
+            it.remove(Keys.UPDATE_GITHUB_OWNER)
+            it.remove(Keys.UPDATE_GITHUB_REPO)
         }
     }
 }

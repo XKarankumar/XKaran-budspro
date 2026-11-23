@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "appName": "KARAN BUDS PREMIUM",
+  "packageName": "com.aistudio.karanbuds.kxrqvm",
+  "repository": {
+    "owner": "XKarankumar",
+    "repo": "Karan-buds-live-pro",
+    "branch": "main",
+    "releasesUrl": "https://github.com/XKarankumar/Karan-buds-live-pro/releases"
+  },
+  "latestRelease": {
+    "tagName": "v1.1.0",
+    "versionName": "1.1.0",
+    "versionCode": 2,
+    "minSdk": 24,
+    "apkFileName": "karan-buds-live-pro-v1.1.0-release.apk",
+    "sha256": "",
+    "mandatory": false,
+    "releaseNotes": "KARAN BUDS PREMIUM v1.1.0 with Software Update Center, Haptics Engine, and GitHub Releases CI/CD."
+  }
+}

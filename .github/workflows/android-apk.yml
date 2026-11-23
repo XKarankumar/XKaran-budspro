@@ -60,7 +60,7 @@ jobs:
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: karan-buds-premium-debug-apk
+          name: karan-buds-live-pro-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
@@ -84,6 +84,6 @@ jobs:
         if: env.RELEASE_BUILT == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: karan-buds-premium-release-apk
+          name: karan-buds-live-pro-release-apk
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: ignore

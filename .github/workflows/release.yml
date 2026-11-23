@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v1.1.0)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -44,9 +50,20 @@ jobs:
         run: |
           source version.properties
           APP_VER="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
+          EFFECTIVE_TAG="${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+              EFFECTIVE_TAG="${{ github.event.inputs.tag_name }}"
+            else
+              EFFECTIVE_TAG="v${APP_VER}"
+            fi
+          fi
           echo "version_name=${APP_VER}" >> "$GITHUB_OUTPUT"
           echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
-          echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${EFFECTIVE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "github_owner=${GITHUB_OWNER}" >> "$GITHUB_OUTPUT"
+          echo "github_repo=${GITHUB_REPO}" >> "$GITHUB_OUTPUT"
+          echo "github_branch=${GITHUB_BRANCH:-main}" >> "$GITHUB_OUTPUT"
 
       - name: Run Unit & Robolectric Tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
@@ -67,30 +84,65 @@ jobs:
             export KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
             ./gradlew :app:assembleRelease --stacktrace
             APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-            cp "$APK_SRC" "release-dist/karan-buds-premium-v${VER}-release.apk"
+            cp "$APK_SRC" "release-dist/karan-buds-live-pro-v${VER}-release.apk"
           else
             echo "::notice::Signing secrets missing; packaging debug-signed fallback APK without failing the release."
             APK_SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-            cp "$APK_SRC" "release-dist/karan-buds-premium-v${VER}-debug.apk"
+            cp "$APK_SRC" "release-dist/karan-buds-live-pro-v${VER}-debug.apk"
           fi
 
-      - name: Generate SHA-256 Checksum & version.json
+      - name: Generate SHA-256 Checksum, version.json & update-manifest.json
         run: |
           cd release-dist
           APK_FILE=$(ls *.apk | head -n 1)
           sha256sum "$APK_FILE" > "${APK_FILE}.sha256"
           SHA_VAL=$(awk '{print $1}' "${APK_FILE}.sha256")
+          OWNER="${{ steps.meta.outputs.github_owner }}"
+          REPO="${{ steps.meta.outputs.github_repo }}"
+          BRANCH="${{ steps.meta.outputs.github_branch }}"
+          TAG="${{ steps.meta.outputs.tag_name }}"
+          VER="${{ steps.meta.outputs.version_name }}"
+          VCODE="${{ steps.meta.outputs.version_code }}"
+          DL_URL="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}/${APK_FILE}"
+
           cat > version.json <<EOF
           {
-            "tagName": "${{ steps.meta.outputs.tag_name }}",
-            "versionName": "${{ steps.meta.outputs.version_name }}",
-            "versionCode": ${{ steps.meta.outputs.version_code }},
+            "tagName": "${TAG}",
+            "versionName": "${VER}",
+            "versionCode": ${VCODE},
             "apkFileName": "${APK_FILE}",
+            "apkDownloadUrl": "${DL_URL}",
             "sha256": "${SHA_VAL}"
           }
           EOF
+
+          cat > update-manifest.json <<EOF
+          {
+            "schemaVersion": 1,
+            "appName": "KARAN BUDS PREMIUM",
+            "packageName": "com.aistudio.karanbuds.kxrqvm",
+            "repository": {
+              "owner": "${OWNER}",
+              "repo": "${REPO}",
+              "branch": "${BRANCH}",
+              "releasesUrl": "https://github.com/${OWNER}/${REPO}/releases"
+            },
+            "latestRelease": {
+              "tagName": "${TAG}",
+              "versionName": "${VER}",
+              "versionCode": ${VCODE},
+              "minSdk": 24,
+              "apkFileName": "${APK_FILE}",
+              "apkDownloadUrl": "${DL_URL}",
+              "sha256": "${SHA_VAL}",
+              "mandatory": false,
+              "releaseNotes": "Official KARAN BUDS PREMIUM ${TAG} verified release."
+            }
+          }
+          EOF
+
           cat "${APK_FILE}.sha256"
-          cat version.json
+          cat update-manifest.json
 
       - name: Prepare Release Notes
         run: |
@@ -98,7 +150,7 @@ jobs:
           {
             echo "## KARAN BUDS PREMIUM v${VER} (Build ${{ steps.meta.outputs.version_code }})"
             echo ""
-            echo "Verified Android build with SHA-256 checksum & package integrity metadata."
+            echo "Verified Android build with SHA-256 checksum & update manifest for \`${{ steps.meta.outputs.github_owner }}/${{ steps.meta.outputs.github_repo }}\`."
             echo ""
             if [ -f CHANGELOG.md ]; then
               cat CHANGELOG.md
@@ -108,9 +160,11 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
           name: "KARAN BUDS PREMIUM ${{ steps.meta.outputs.tag_name }}"
           body_path: release-notes.md
           files: |
             release-dist/*.apk
             release-dist/*.sha256
             release-dist/version.json
+            release-dist/update-manifest.json
