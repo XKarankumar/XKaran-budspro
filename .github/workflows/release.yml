@@ -1,0 +1,116 @@
+name: Release KARAN BUDS PREMIUM
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Gradle Wrapper & Debug Keystore
+        run: |
+          chmod +x gradlew
+          if [ ! -f debug.keystore ]; then
+            if [ -f debug.keystore.base64 ]; then
+              base64 -d debug.keystore.base64 > debug.keystore
+            else
+              keytool -genkeypair -v -keystore debug.keystore \
+                -storepass android -alias androiddebugkey -keypass android \
+                -keyalg RSA -keysize 2048 -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+          fi
+
+      - name: Read Central Version Metadata
+        id: meta
+        run: |
+          source version.properties
+          APP_VER="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
+          echo "version_name=${APP_VER}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Unit & Robolectric Tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Build Debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Build Signed Release APK (when signing secrets exist)
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p release-dist
+          VER="${{ steps.meta.outputs.version_name }}"
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+            export KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
+            ./gradlew :app:assembleRelease --stacktrace
+            APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+            cp "$APK_SRC" "release-dist/karan-buds-premium-v${VER}-release.apk"
+          else
+            echo "::notice::Signing secrets missing; packaging debug-signed fallback APK without failing the release."
+            APK_SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+            cp "$APK_SRC" "release-dist/karan-buds-premium-v${VER}-debug.apk"
+          fi
+
+      - name: Generate SHA-256 Checksum & version.json
+        run: |
+          cd release-dist
+          APK_FILE=$(ls *.apk | head -n 1)
+          sha256sum "$APK_FILE" > "${APK_FILE}.sha256"
+          SHA_VAL=$(awk '{print $1}' "${APK_FILE}.sha256")
+          cat > version.json <<EOF
+          {
+            "tagName": "${{ steps.meta.outputs.tag_name }}",
+            "versionName": "${{ steps.meta.outputs.version_name }}",
+            "versionCode": ${{ steps.meta.outputs.version_code }},
+            "apkFileName": "${APK_FILE}",
+            "sha256": "${SHA_VAL}"
+          }
+          EOF
+          cat "${APK_FILE}.sha256"
+          cat version.json
+
+      - name: Prepare Release Notes
+        run: |
+          VER="${{ steps.meta.outputs.version_name }}"
+          {
+            echo "## KARAN BUDS PREMIUM v${VER} (Build ${{ steps.meta.outputs.version_code }})"
+            echo ""
+            echo "Verified Android build with SHA-256 checksum & package integrity metadata."
+            echo ""
+            if [ -f CHANGELOG.md ]; then
+              cat CHANGELOG.md
+            fi
+          } > release-notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "KARAN BUDS PREMIUM ${{ steps.meta.outputs.tag_name }}"
+          body_path: release-notes.md
+          files: |
+            release-dist/*.apk
+            release-dist/*.sha256
+            release-dist/version.json

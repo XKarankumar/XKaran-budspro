@@ -19,8 +19,10 @@ class BatteryNotificationManager(private val context: Context) {
     companion object {
         const val CHANNEL_BATTERY = "karan_buds_battery_alerts"
         const val CHANNEL_CONNECTION = "karan_buds_connection_status"
+        const val CHANNEL_UPDATES = "karan_buds_app_updates"
         private const val NOTIF_ID_BATTERY = 1001
         private const val NOTIF_ID_CONNECTION = 1002
+        private const val NOTIF_ID_UPDATE = 1003
     }
 
     init {
@@ -44,8 +46,16 @@ class BatteryNotificationManager(private val context: Context) {
             ).apply {
                 description = context.getString(R.string.notif_channel_connection_desc)
             }
+            val updatesChannel = NotificationChannel(
+                CHANNEL_UPDATES,
+                context.getString(R.string.notif_channel_updates_name),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = context.getString(R.string.notif_channel_updates_desc)
+            }
             nm.createNotificationChannel(batteryChannel)
             nm.createNotificationChannel(connChannel)
+            nm.createNotificationChannel(updatesChannel)
         }
     }
 
@@ -100,6 +110,31 @@ class BatteryNotificationManager(private val context: Context) {
 
         runCatching {
             NotificationManagerCompat.from(context).notify(NOTIF_ID_CONNECTION, notification)
+        }
+    }
+
+    fun postUpdateAvailableNotification(versionTag: String, releaseName: String, summary: String) {
+        if (!hasNotificationPermission()) return
+        val launchIntent = PendingIntent.getActivity(
+            context,
+            2,
+            Intent(context, MainActivity::class.java).apply {
+                putExtra("open_update_center", true)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+            .setSmallIcon(R.drawable.ic_tile_buds)
+            .setContentTitle("KARAN BUDS Update Available • $versionTag")
+            .setContentText(summary.ifBlank { "$releaseName is ready to review & verify." })
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(launchIntent)
+            .setOnlyAlertOnce(true)
+            .setAutoCancel(true)
+            .build()
+
+        runCatching {
+            NotificationManagerCompat.from(context).notify(NOTIF_ID_UPDATE, notification)
         }
     }
 }

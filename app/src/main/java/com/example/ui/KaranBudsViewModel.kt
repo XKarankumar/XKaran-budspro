@@ -1,10 +1,12 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.KaranBudsApplication
 import com.example.ai.AssistantMessage
 import com.example.ai.AssistantSuggestion
@@ -20,8 +22,12 @@ import com.example.data.db.BatteryHistoryEntity
 import com.example.data.db.ConnectionEventEntity
 import com.example.data.db.EqPresetEntity
 import com.example.data.db.SavedDeviceEntity
+import com.example.data.db.UpdateHistoryEntity
 import com.example.data.prefs.ListeningMode
 import com.example.data.prefs.UserPreferencesState
+import com.example.haptics.HapticCapabilities
+import com.example.haptics.HapticEvent
+import com.example.haptics.HapticIntensity
 import com.example.location.FinderChannel
 import com.example.location.FinderUiState
 import com.example.ui.theme.AnimationSpeed
@@ -30,6 +36,12 @@ import com.example.ui.theme.HomeCardId
 import com.example.ui.theme.IconStyle
 import com.example.ui.theme.PopupStyle
 import com.example.ui.theme.ThemePreset
+import com.example.updater.ApkVerificationResult
+import com.example.updater.DownloadState
+import com.example.updater.ReleaseInfo
+import com.example.updater.SemVerComparator
+import com.example.updater.UpdateCheckState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,10 +73,15 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
     private val audioEngine = app.audioEngine
     private val finderManager = app.finderManager
     private val backupManager = app.backupRestoreManager
+    private val hapticsManager = app.hapticsManager
+    private val releaseChecker = app.releaseChecker
+    private val apkDownloader = app.apkDownloader
+    private val notificationManager = app.notificationManager
 
     val budsState: StateFlow<ConnectedBudsState> = btController.state
     val audioStatus: StateFlow<AudioEngineStatus> = audioEngine.status
     val finderState: StateFlow<FinderUiState> = finderManager.state
+    val hapticCapabilities: StateFlow<HapticCapabilities> = hapticsManager.capabilities
 
     val preferences: StateFlow<UserPreferencesState> = prefsRepo.preferencesFlow.stateIn(
         scope = viewModelScope,
@@ -87,6 +104,9 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
     val ancProfiles: StateFlow<List<AncProfileEntity>> = db.ancProfileDao().observeProfiles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val updateHistory: StateFlow<List<UpdateHistoryEntity>> = db.updateHistoryDao().observeHistory()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _activePopup = MutableStateFlow<ConnectionPopupEvent?>(null)
     val activePopup: StateFlow<ConnectionPopupEvent?> = _activePopup.asStateFlow()
 
@@ -106,7 +126,18 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
     private val _bannerMessage = MutableStateFlow<String?>(null)
     val bannerMessage: StateFlow<String?> = _bannerMessage.asStateFlow()
 
+    private val _updateCheckState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
+    val updateCheckState: StateFlow<UpdateCheckState> = _updateCheckState.asStateFlow()
+
+    private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
+    val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
+
+    private val _showUpdateDialog = MutableStateFlow(false)
+    val showUpdateDialog: StateFlow<Boolean> = _showUpdateDialog.asStateFlow()
+
     private var popupDismissJob: Job? = null
+    private var downloadJob: Job? = null
+    private var lastKnownRelease: ReleaseInfo? = null
 
     init {
         viewModelScope.launch {
@@ -118,6 +149,13 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
         finderManager.refreshLocationPermissionState()
+        viewModelScope.launch {
+            val snap = prefsRepo.getSnapshot()
+            if (snap.autoUpdateCheck) {
+                delay(1800L)
+                checkForUpdates(manual = false)
+            }
+        }
     }
 
     fun onPermissionsUpdated() {
@@ -158,6 +196,7 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- Listening Mode & Low Latency ---
     fun selectListeningMode(mode: ListeningMode) {
+        hapticsManager.trigger(HapticEvent.BUTTON_CLICK)
         viewModelScope.launch {
             prefsRepo.setListeningMode(mode)
             val targetPreset = when (mode) {
@@ -346,6 +385,7 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- Spatial Audio Studio ---
     fun setSpatialSettings(virtualSurround: Boolean, profile: String, stageWidth: Float) {
+        hapticsManager.trigger(HapticEvent.SPATIAL_TOGGLE)
         val p = preferences.value
         val bands = p.eqBandsCsv.split(",").mapNotNull { it.toFloatOrNull() }
         viewModelScope.launch {
@@ -366,6 +406,9 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- ANC Control Center ---
     fun selectAncMode(mode: AncMode) {
+        hapticsManager.trigger(
+            if (mode == AncMode.TRANSPARENCY) HapticEvent.TRANSPARENCY_SWITCH else HapticEvent.ANC_SWITCH
+        )
         val supported = budsState.value.capabilities.hardwareAnc.isHardwareSupported
         _ancState.value = _ancState.value.copy(
             selectedMode = mode,
@@ -510,8 +553,14 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // --- Theme Studio & Settings ---
-    fun setThemePreset(preset: ThemePreset) = viewModelScope.launch { prefsRepo.setThemePreset(preset) }
-    fun setAccentColor(color: Color) = viewModelScope.launch { prefsRepo.setAccentColor(color) }
+    fun setThemePreset(preset: ThemePreset) {
+        hapticsManager.trigger(HapticEvent.THEME_SELECT)
+        viewModelScope.launch { prefsRepo.setThemePreset(preset) }
+    }
+    fun setAccentColor(color: Color) {
+        hapticsManager.trigger(HapticEvent.THEME_SELECT)
+        viewModelScope.launch { prefsRepo.setAccentColor(color) }
+    }
     fun setBackgroundMode(mode: BackgroundMode) = viewModelScope.launch { prefsRepo.setBackgroundMode(mode) }
     fun setCardTransparency(alpha: Float) = viewModelScope.launch { prefsRepo.setCardTransparency(alpha) }
     fun setBlurIntensity(intensity: Float) = viewModelScope.launch { prefsRepo.setBlurIntensity(intensity) }
@@ -562,8 +611,309 @@ class KaranBudsViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    // --- Haptics Engine ---
+    fun triggerHaptic(event: HapticEvent) {
+        hapticsManager.trigger(event, forcePreview = false)
+    }
+
+    fun previewHaptic(event: HapticEvent) {
+        hapticsManager.trigger(event, forcePreview = true)
+    }
+
+    fun refreshHapticCapabilities() {
+        hapticsManager.refreshCapabilities()
+    }
+
+    fun setHapticsMasterEnabled(enabled: Boolean) = viewModelScope.launch {
+        prefsRepo.setHapticsMasterEnabled(enabled)
+        if (enabled) {
+            delay(60L)
+            hapticsManager.trigger(HapticEvent.BUTTON_CLICK, forcePreview = true)
+        }
+    }
+
+    fun setHapticIntensity(intensity: HapticIntensity) = viewModelScope.launch {
+        prefsRepo.setHapticIntensity(intensity)
+        delay(60L)
+        hapticsManager.trigger(HapticEvent.THEME_SELECT, forcePreview = true)
+    }
+
+    fun setHapticsRespectSystem(respect: Boolean) = viewModelScope.launch {
+        prefsRepo.setHapticsRespectSystem(respect)
+    }
+
+    fun setHapticsBatterySaver(enabled: Boolean) = viewModelScope.launch {
+        prefsRepo.setHapticsBatterySaver(enabled)
+    }
+
+    fun setHapticsFeatureToggles(
+        connection: Boolean? = null,
+        ancSpatial: Boolean? = null,
+        uiTheme: Boolean? = null,
+        update: Boolean? = null,
+        alerts: Boolean? = null
+    ) = viewModelScope.launch {
+        prefsRepo.setHapticsFeatureToggles(connection, ancSpatial, uiTheme, update, alerts)
+    }
+
+    fun setHapticsPulseDuration(ms: Int) = viewModelScope.launch {
+        prefsRepo.setHapticsPulseDuration(ms)
+    }
+
+    // --- GitHub Releases Auto-Updater ---
+    fun checkForUpdates(manual: Boolean = true) {
+        if (manual) hapticsManager.trigger(HapticEvent.BUTTON_CLICK)
+        viewModelScope.launch {
+            _updateCheckState.value = UpdateCheckState.Checking
+            val snap = prefsRepo.getSnapshot()
+            val owner = snap.githubOwner.ifBlank { BuildConfig.GITHUB_OWNER }
+            val repo = snap.githubRepo.ifBlank { BuildConfig.GITHUB_REPO }
+
+            val now = System.currentTimeMillis()
+            prefsRepo.setLastUpdateCheckedMs(now)
+
+            releaseChecker.fetchLatestRelease(owner, repo)
+                .onSuccess { release ->
+                    val isNewer = SemVerComparator.isRemoteNewer(
+                        installedVersion = BuildConfig.VERSION_NAME,
+                        remoteVersion = release.versionName,
+                        installedCode = BuildConfig.VERSION_CODE,
+                        remoteCode = release.versionCode
+                    )
+                    if (isNewer) {
+                        lastKnownRelease = release
+                        _updateCheckState.value = UpdateCheckState.UpdateAvailable(
+                            currentVersion = BuildConfig.VERSION_NAME,
+                            release = release,
+                            lastCheckedMs = now
+                        )
+                        if (snap.lastNotifiedUpdateTag != release.tagName) {
+                            db.updateHistoryDao().insertEntry(
+                                UpdateHistoryEntity(
+                                    tagName = release.tagName,
+                                    versionName = release.versionName,
+                                    status = "DETECTED",
+                                    notes = release.releaseName,
+                                    sha256 = release.expectedSha256
+                                )
+                            )
+                            if (snap.notificationsEnabled) {
+                                notificationManager.postUpdateAvailableNotification(
+                                    versionTag = release.tagName,
+                                    releaseName = release.releaseName,
+                                    summary = release.releaseNotes.lineSequence().firstOrNull().orEmpty()
+                                )
+                            }
+                            prefsRepo.setLastNotifiedUpdateTag(release.tagName)
+                        }
+                        if (manual || snap.dismissedUpdateTag != release.tagName) {
+                            _showUpdateDialog.value = true
+                        }
+                    } else {
+                        _updateCheckState.value = UpdateCheckState.UpToDate(
+                            currentVersion = BuildConfig.VERSION_NAME,
+                            latestVersion = release.versionName,
+                            lastCheckedMs = now
+                        )
+                        if (manual) {
+                            showBanner("KARAN BUDS ${BuildConfig.VERSION_NAME} is up to date")
+                        }
+                    }
+                }
+                .onFailure { err ->
+                    val message = err.localizedMessage ?: "Unable to reach GitHub Releases."
+                    _updateCheckState.value = UpdateCheckState.Error(
+                        message = message,
+                        lastCheckedMs = now
+                    )
+                    if (manual) {
+                        hapticsManager.trigger(HapticEvent.ERROR)
+                    }
+                }
+        }
+    }
+
+    fun openUpdateDialogIfAvailable() {
+        if (_updateCheckState.value is UpdateCheckState.UpdateAvailable) {
+            _showUpdateDialog.value = true
+        }
+    }
+
+    fun dismissUpdateDialog(later: Boolean = true) {
+        _showUpdateDialog.value = false
+        if (later) {
+            val tag = (_updateCheckState.value as? UpdateCheckState.UpdateAvailable)?.release?.tagName
+                ?: lastKnownRelease?.tagName
+            if (!tag.isNullOrBlank()) {
+                viewModelScope.launch { prefsRepo.setDismissedUpdateTag(tag) }
+            }
+        }
+    }
+
+    fun startOrResumeDownload() {
+        val release = (_updateCheckState.value as? UpdateCheckState.UpdateAvailable)?.release
+            ?: lastKnownRelease
+        if (release == null) {
+            hapticsManager.trigger(HapticEvent.ERROR)
+            showBanner("Check for updates before downloading.")
+            return
+        }
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
+            _downloadState.value = DownloadState.Downloading(0L, release.apkSizeBytes ?: -1L, 0f)
+            apkDownloader.downloadWithResume(release) { bytes, total, progress ->
+                _downloadState.value = DownloadState.Downloading(bytes, total, progress)
+            }.onSuccess { apkFile ->
+                _downloadState.value = DownloadState.Verifying
+                when (val verification = apkDownloader.verifyApk(apkFile, release)) {
+                    is ApkVerificationResult.Valid -> {
+                        hapticsManager.trigger(HapticEvent.UPDATE_DOWNLOADED)
+                        db.updateHistoryDao().insertEntry(
+                            UpdateHistoryEntity(
+                                tagName = release.tagName,
+                                versionName = release.versionName,
+                                status = "VERIFIED",
+                                notes = "SHA-256 & signing certificate verified (${apkFile.name})",
+                                sha256 = verification.sha256
+                            )
+                        )
+                        _downloadState.value = DownloadState.ReadyToInstall(
+                            apkFile = apkFile,
+                            sha256 = verification.sha256,
+                            release = release
+                        )
+                    }
+                    is ApkVerificationResult.Invalid -> {
+                        hapticsManager.trigger(HapticEvent.ERROR)
+                        db.updateHistoryDao().insertEntry(
+                            UpdateHistoryEntity(
+                                tagName = release.tagName,
+                                versionName = release.versionName,
+                                status = "FAILED",
+                                notes = verification.reason
+                            )
+                        )
+                        _downloadState.value = DownloadState.Failed(
+                            message = verification.reason,
+                            canResume = false
+                        )
+                    }
+                }
+            }.onFailure { err ->
+                if (err is CancellationException) {
+                    val part = apkDownloader.getPartialFile(release)
+                    val bytes = if (part.exists()) part.length() else 0L
+                    val total = release.apkSizeBytes ?: -1L
+                    val prog = if (total > 0L) (bytes.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+                    _downloadState.value = DownloadState.Paused(bytes, total, prog)
+                } else {
+                    hapticsManager.trigger(HapticEvent.ERROR)
+                    val msg = err.localizedMessage ?: "Download interrupted."
+                    db.updateHistoryDao().insertEntry(
+                        UpdateHistoryEntity(
+                            tagName = release.tagName,
+                            versionName = release.versionName,
+                            status = "FAILED",
+                            notes = msg
+                        )
+                    )
+                    _downloadState.value = DownloadState.Failed(msg, canResume = true)
+                }
+            }
+        }
+    }
+
+    fun pauseDownload() {
+        downloadJob?.cancel()
+        downloadJob = null
+        val release = (_updateCheckState.value as? UpdateCheckState.UpdateAvailable)?.release
+            ?: lastKnownRelease
+        if (release != null) {
+            val part = apkDownloader.getPartialFile(release)
+            val bytes = if (part.exists()) part.length() else 0L
+            val total = release.apkSizeBytes ?: -1L
+            val prog = if (total > 0L) (bytes.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+            _downloadState.value = DownloadState.Paused(bytes, total, prog)
+        }
+    }
+
+    fun retryDownload() {
+        val current = _downloadState.value
+        if (current is DownloadState.Failed && !current.canResume) {
+            apkDownloader.clearDownloads()
+        }
+        startOrResumeDownload()
+    }
+
+    fun clearDownloadedUpdate() {
+        downloadJob?.cancel()
+        apkDownloader.clearDownloads()
+        _downloadState.value = DownloadState.Idle
+    }
+
+    fun canRequestPackageInstalls(): Boolean = apkDownloader.canRequestPackageInstalls()
+
+    fun openInstallPermissionSettings(context: Context) {
+        hapticsManager.trigger(HapticEvent.BUTTON_CLICK)
+        runCatching {
+            context.startActivity(apkDownloader.buildInstallSettingsIntent())
+        }.onFailure {
+            showBanner("Unable to open Install Unknown Apps settings.")
+        }
+    }
+
+    fun launchVerifiedInstaller(context: Context) {
+        val ready = _downloadState.value as? DownloadState.ReadyToInstall ?: return
+        if (!apkDownloader.canRequestPackageInstalls()) {
+            hapticsManager.trigger(HapticEvent.ERROR)
+            openInstallPermissionSettings(context)
+            showBanner("Enable 'Allow from this source' and tap Install Update again.")
+            return
+        }
+        hapticsManager.trigger(HapticEvent.UPDATE_INSTALLED)
+        viewModelScope.launch {
+            db.updateHistoryDao().insertEntry(
+                UpdateHistoryEntity(
+                    tagName = ready.release.tagName,
+                    versionName = ready.release.versionName,
+                    status = "INSTALL_LAUNCHED",
+                    notes = "Verified APK handed off to Android Package Installer",
+                    sha256 = ready.sha256
+                )
+            )
+        }
+        runCatching {
+            context.startActivity(apkDownloader.buildPackageInstallerIntent(ready.apkFile))
+        }.onFailure { err ->
+            hapticsManager.trigger(HapticEvent.ERROR)
+            showBanner("Could not launch package installer: ${err.localizedMessage}")
+        }
+    }
+
+    fun setAutoUpdateCheck(enabled: Boolean) = viewModelScope.launch {
+        prefsRepo.setAutoUpdateCheck(enabled)
+    }
+
+    fun setGitHubSource(owner: String, repo: String) {
+        if (!SemVerComparator.isValidRepoSlug(owner) || !SemVerComparator.isValidRepoSlug(repo)) {
+            hapticsManager.trigger(HapticEvent.ERROR)
+            showBanner("Invalid GitHub repository slug.")
+            return
+        }
+        viewModelScope.launch {
+            prefsRepo.setGitHubSource(owner, repo)
+            showBanner("Updated official release source to $owner/$repo")
+            checkForUpdates(manual = true)
+        }
+    }
+
+    fun clearUpdateHistory() = viewModelScope.launch {
+        db.updateHistoryDao().clearHistory()
+    }
+
     override fun onCleared() {
         super.onCleared()
+        downloadJob?.cancel()
         audioEngine.stopAuditionPlayer()
         finderManager.stopAcousticFinder()
         finderManager.stopProximityScan()

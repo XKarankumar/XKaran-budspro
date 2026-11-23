@@ -6,7 +6,11 @@ import com.example.audio.EqBandLabels
 import com.example.bluetooth.BrandDetector
 import com.example.bluetooth.BudsBrand
 import com.example.data.prefs.ListeningMode
+import com.example.haptics.HapticIntensity
+import com.example.updater.BuiltInChangelog
+import com.example.updater.SemVerComparator
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,5 +47,31 @@ class KaranBudsCoreUnitTest {
         BuiltInEqPresets.forEach { preset ->
             assertEquals("Preset ${preset.name} must have 10 EQ bands", 10, preset.bandsDb.size)
         }
+    }
+
+    @Test
+    fun `semver comparator accurately detects newer releases and build codes`() {
+        assertTrue(SemVerComparator.isRemoteNewer("1.0.0", "v1.1.0"))
+        assertTrue(SemVerComparator.isRemoteNewer("1.1.0", "2.0.0"))
+        assertFalse(SemVerComparator.isRemoteNewer("1.1.0", "1.1.0"))
+        assertFalse(SemVerComparator.isRemoteNewer("1.2.0", "1.1.9"))
+        assertTrue(SemVerComparator.isRemoteNewer("1.1.0", "1.1.0", installedCode = 2, remoteCode = 3))
+    }
+
+    @Test
+    fun `updater accepts only trusted https github release urls and valid slugs`() {
+        assertTrue(SemVerComparator.isValidRepoSlug("karan-buds-premium"))
+        assertFalse(SemVerComparator.isValidRepoSlug("owner/repo?bad=1"))
+        assertTrue(SemVerComparator.isTrustedGitHubUrl("https://github.com/karan/karan-buds-premium/releases/download/v1.1.0/app.apk"))
+        assertTrue(SemVerComparator.isTrustedGitHubUrl("https://objects.githubusercontent.com/github-production-release-asset/123"))
+        assertFalse(SemVerComparator.isTrustedGitHubUrl("http://github.com/karan/app.apk"))
+        assertFalse(SemVerComparator.isTrustedGitHubUrl("https://evil.example.com/app.apk"))
+    }
+
+    @Test
+    fun `haptics intensity scales monotonically and changelog contains versions`() {
+        assertTrue(HapticIntensity.LIGHT.amplitudeScale < HapticIntensity.MEDIUM.amplitudeScale)
+        assertTrue(HapticIntensity.MEDIUM.amplitudeScale < HapticIntensity.STRONG.amplitudeScale)
+        assertTrue(BuiltInChangelog.entries.any { it.version == "1.1.0" })
     }
 }

@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -8,6 +9,20 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+val versionProps = Properties().apply {
+  val propsFile = rootProject.file("version.properties")
+  if (propsFile.exists()) {
+    propsFile.inputStream().use { load(it) }
+  }
+}
+val appVersionMajor = versionProps.getProperty("VERSION_MAJOR", "1").toInt()
+val appVersionMinor = versionProps.getProperty("VERSION_MINOR", "1").toInt()
+val appVersionPatch = versionProps.getProperty("VERSION_PATCH", "0").toInt()
+val appVersionCode = versionProps.getProperty("VERSION_CODE", "2").toInt()
+val appVersionName = "$appVersionMajor.$appVersionMinor.$appVersionPatch"
+val githubOwner = versionProps.getProperty("GITHUB_OWNER", "karan")
+val githubRepo = versionProps.getProperty("GITHUB_REPO", "karan-buds-premium")
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -16,8 +31,11 @@ android {
     applicationId = "com.aistudio.karanbuds.kxrqvm"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0.0"
+    versionCode = appVersionCode
+    versionName = appVersionName
+
+    buildConfigField("String", "GITHUB_OWNER", "\"$githubOwner\"")
+    buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

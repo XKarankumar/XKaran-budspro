@@ -80,3 +80,16 @@ interface AncProfileDao {
     @Query("DELETE FROM anc_profiles WHERE id = :id")
     suspend fun deleteProfile(id: Long)
 }
+
+@Dao
+interface UpdateHistoryDao {
+    @Query("SELECT * FROM update_history ORDER BY timestamp DESC LIMIT 40")
+    fun observeHistory(): Flow<List<UpdateHistoryEntity>>
+
+    @Insert
+    suspend fun insertEntry(entry: UpdateHistoryEntity)
+
+    @Query("DELETE FROM update_history")
+    suspend fun clearHistory()
+}
+

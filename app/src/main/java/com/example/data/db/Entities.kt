@@ -76,3 +76,15 @@ data class AncProfileEntity(
     val windReduction: Boolean,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "update_history")
+data class UpdateHistoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tagName: String,
+    val versionName: String,
+    val status: String, // DETECTED, DOWNLOADED, VERIFIED, INSTALL_LAUNCHED, FAILED
+    val notes: String = "",
+    val sha256: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+

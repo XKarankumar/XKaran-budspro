@@ -38,6 +38,11 @@ jobs:
             fi
           fi
 
+      - name: Validate Version Configuration
+        run: |
+          test -f version.properties
+          cat version.properties
+
       - name: Run Unit & Robolectric Tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
@@ -58,3 +63,27 @@ jobs:
           name: karan-buds-premium-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Build Signed Release APK (if signing secrets are configured)
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+            export KEYSTORE_PATH="$RUNNER_TEMP/upload-keystore.jks"
+            ./gradlew :app:assembleRelease --stacktrace
+            echo "RELEASE_BUILT=true" >> "$GITHUB_ENV"
+          else
+            echo "::notice::Optional release signing secrets (RELEASE_KEYSTORE_BASE64, STORE_PASSWORD, KEY_PASSWORD) are not configured. Skipping signed release build cleanly."
+            echo "RELEASE_BUILT=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload Release APK Artifact
+        if: env.RELEASE_BUILT == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: karan-buds-premium-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: ignore

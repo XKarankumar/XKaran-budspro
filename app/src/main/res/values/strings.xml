@@ -9,4 +9,6 @@
     <string name="notif_channel_battery_desc">Low battery and connection status alerts for earbuds</string>
     <string name="notif_channel_connection_name">Device Connection</string>
     <string name="notif_channel_connection_desc">Companion notifications when Bluetooth audio connects</string>
+    <string name="notif_channel_updates_name">App Updates</string>
+    <string name="notif_channel_updates_desc">Notifications when a verified KARAN BUDS release is available</string>
 </resources>

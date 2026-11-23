@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Backup
@@ -40,6 +41,8 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.SettingsBluetooth
+import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -105,6 +108,9 @@ fun ThemeStudioAndSettingsScreen(
     onSetAppLock: (Boolean, Boolean) -> Unit,
     onExportBackup: (Uri) -> Unit,
     onRestoreBackup: (Uri) -> Unit,
+    updateAvailableTag: String?,
+    onOpenHapticsSettings: () -> Unit,
+    onOpenUpdateCenter: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val karan = LocalKaranColors.current
@@ -370,6 +376,129 @@ fun ThemeStudioAndSettingsScreen(
                                 Icon(Icons.Rounded.ArrowDownward, contentDescription = "Move down", tint = if (index < preferences.homeCardOrder.lastIndex) karan.accent else karan.textMuted)
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Haptics Engine & Software Update Center Cards
+        item {
+            GlassCard(accentGlow = karan.accent) {
+                SectionHeader(
+                    title = "Haptics & App Updates",
+                    subtitle = "Tactile engine controls & GitHub Releases updater"
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    onClick = onOpenHapticsSettings,
+                    shape = RoundedCornerShape(16.dp),
+                    color = karan.background.copy(alpha = 0.5f),
+                    border = BorderStroke(0.9.dp, karan.cardBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("open_haptics_settings_btn")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Vibration,
+                            contentDescription = "Haptics Settings",
+                            tint = karan.accent,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Haptics Engine Settings",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = karan.textPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (preferences.hapticsSettings.masterEnabled) {
+                                    "Enabled • ${preferences.hapticsSettings.intensity.displayName} intensity (${preferences.hapticsSettings.customPulseDurationMs}ms)"
+                                } else {
+                                    "Muted • Tap to configure tactile feedback"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = karan.textSecondary
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = karan.textMuted
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Surface(
+                    onClick = onOpenUpdateCenter,
+                    shape = RoundedCornerShape(16.dp),
+                    color = karan.background.copy(alpha = 0.5f),
+                    border = BorderStroke(
+                        0.9.dp,
+                        if (updateAvailableTag != null) karan.success.copy(alpha = 0.6f) else karan.cardBorder
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("open_update_center_btn")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SystemUpdate,
+                            contentDescription = "Software Update Center",
+                            tint = if (updateAvailableTag != null) karan.success else karan.accent,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Software Update Center",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = karan.textPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (updateAvailableTag != null) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = karan.success.copy(alpha = 0.18f)
+                                    ) {
+                                        Text(
+                                            text = updateAvailableTag,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = karan.success,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = "Installed v${BuildConfig.VERSION_NAME} • Check GitHub Releases & changelog",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = karan.textSecondary
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = karan.textMuted
+                        )
                     }
                 }
             }

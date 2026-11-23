@@ -80,14 +80,18 @@ import com.example.ui.components.BrandMarkBadge
 import com.example.ui.components.ConnectionPopupOverlay
 import com.example.ui.screens.AudioLabAndAiScreen
 import com.example.ui.screens.ExploreDevicesScreen
+import com.example.ui.screens.HapticsSettingsScreen
 import com.example.ui.screens.HomeDashboardScreen
 import com.example.ui.screens.NoiseAndSpatialScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.SplashScreenView
 import com.example.ui.screens.ThemeStudioAndSettingsScreen
+import com.example.ui.screens.UpdateAvailableDialog
+import com.example.ui.screens.UpdateCenterScreen
 import com.example.ui.theme.IconStyle
 import com.example.ui.theme.KaranBudsTheme
 import com.example.ui.theme.LocalKaranColors
+import com.example.updater.UpdateCheckState
 import kotlinx.coroutines.delay
 
 enum class MainNavTab(
@@ -103,23 +107,36 @@ enum class MainNavTab(
     STUDIO("studio", "Studio", Icons.Filled.Palette, Icons.Outlined.Palette)
 }
 
+enum class StudioSubScreen {
+    NONE,
+    HAPTICS,
+    UPDATE_CENTER
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val openUpdateOnLaunch = intent?.getBooleanExtra("open_update_center", false) == true
         setContent {
             val viewModel: KaranBudsViewModel = viewModel()
             val prefs by viewModel.preferences.collectAsStateWithLifecycle()
 
             KaranBudsTheme(config = prefs.themeConfig) {
-                KaranBudsAppRoot(viewModel = viewModel)
+                KaranBudsAppRoot(
+                    viewModel = viewModel,
+                    openUpdateCenterOnLaunch = openUpdateOnLaunch
+                )
             }
         }
     }
 }
 
 @Composable
-fun KaranBudsAppRoot(viewModel: KaranBudsViewModel) {
+fun KaranBudsAppRoot(
+    viewModel: KaranBudsViewModel,
+    openUpdateCenterOnLaunch: Boolean = false
+) {
     val karan = LocalKaranColors.current
     val context = LocalContext.current
 
@@ -136,11 +153,21 @@ fun KaranBudsAppRoot(viewModel: KaranBudsViewModel) {
     val assistantMessages by viewModel.assistantMessages.collectAsStateWithLifecycle()
     val activePopup by viewModel.activePopup.collectAsStateWithLifecycle()
     val bannerMessage by viewModel.bannerMessage.collectAsStateWithLifecycle()
+    val hapticCapabilities by viewModel.hapticCapabilities.collectAsStateWithLifecycle()
+    val updateCheckState by viewModel.updateCheckState.collectAsStateWithLifecycle()
+    val downloadState by viewModel.downloadState.collectAsStateWithLifecycle()
+    val updateHistory by viewModel.updateHistory.collectAsStateWithLifecycle()
+    val showUpdateDialog by viewModel.showUpdateDialog.collectAsStateWithLifecycle()
 
     var showSplash by rememberSaveable { mutableStateOf(true) }
     var isUnlocked by rememberSaveable { mutableStateOf(false) }
     var lockError by remember { mutableStateOf<String?>(null) }
-    var currentTab by rememberSaveable { mutableStateOf(MainNavTab.HOME) }
+    var currentTab by rememberSaveable {
+        mutableStateOf(if (openUpdateCenterOnLaunch) MainNavTab.STUDIO else MainNavTab.HOME)
+    }
+    var studioSubScreen by rememberSaveable {
+        mutableStateOf(if (openUpdateCenterOnLaunch) StudioSubScreen.UPDATE_CENTER else StudioSubScreen.NONE)
+    }
     var audioLabInitialTab by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
@@ -168,7 +195,10 @@ fun KaranBudsAppRoot(viewModel: KaranBudsViewModel) {
         }
     }
 
-    if (currentTab != MainNavTab.HOME && !showSplash && prefs.onboardingCompleted && isUnlocked) {
+    if (currentTab != MainNavTab.HOME &&
+        !(currentTab == MainNavTab.STUDIO && studioSubScreen != StudioSubScreen.NONE) &&
+        !showSplash && prefs.onboardingCompleted && isUnlocked
+    ) {
         BackHandler { currentTab = MainNavTab.HOME }
     }
 
@@ -250,6 +280,8 @@ fun KaranBudsAppRoot(viewModel: KaranBudsViewModel) {
                                             selected = selected,
                                             onClick = {
                                                 if (tab == MainNavTab.AUDIO_LAB) audioLabInitialTab = 0
+                                                if (tab != MainNavTab.STUDIO) studioSubScreen = StudioSubScreen.NONE
+                                                else if (currentTab == MainNavTab.STUDIO) studioSubScreen = StudioSubScreen.NONE
                                                 currentTab = tab
                                             },
                                             icon = {
@@ -299,6 +331,8 @@ fun KaranBudsAppRoot(viewModel: KaranBudsViewModel) {
                                             selected = selected,
                                             onClick = {
                                                 if (tab == MainNavTab.AUDIO_LAB) audioLabInitialTab = 0
+                                                if (tab != MainNavTab.STUDIO) studioSubScreen = StudioSubScreen.NONE
+                                                else if (currentTab == MainNavTab.STUDIO) studioSubScreen = StudioSubScreen.NONE
                                                 currentTab = tab
                                             },
                                             icon = {
@@ -421,29 +455,77 @@ fun KaranBudsAppRoot(viewModel: KaranBudsViewModel) {
                                             )
                                         }
                                         MainNavTab.STUDIO -> {
-                                            ThemeStudioAndSettingsScreen(
-                                                preferences = prefs,
-                                                onSelectThemePreset = { viewModel.setThemePreset(it) },
-                                                onSelectAccentColor = { viewModel.setAccentColor(it) },
-                                                onSelectBackgroundMode = { viewModel.setBackgroundMode(it) },
-                                                onSetCardTransparency = { viewModel.setCardTransparency(it) },
-                                                onSetBlurIntensity = { viewModel.setBlurIntensity(it) },
-                                                onSelectPopupStyle = { viewModel.setPopupStyle(it) },
-                                                onPreviewPopup = { viewModel.triggerPopupPreview() },
-                                                onToggleConnectionPopup = { viewModel.setConnectionPopupEnabled(it) },
-                                                onSelectAnimationSpeed = { viewModel.setAnimationSpeed(it) },
-                                                onSelectIconStyle = { viewModel.setIconStyle(it) },
-                                                onMoveHomeCard = { idx, dir -> viewModel.moveHomeCard(idx, dir) },
-                                                onSetCustomWallpaper = { viewModel.setCustomWallpaper(it) },
-                                                onResetTheme = { viewModel.resetThemeDefaults() },
-                                                onToggleSmartReconnect = { viewModel.setSmartReconnect(it) },
-                                                onToggleNotifications = { viewModel.setNotificationsEnabled(it) },
-                                                onToggleLowBatteryAlerts = { viewModel.setLowBatteryAlerts(it) },
-                                                onSelectLanguage = { viewModel.setLanguageCode(it) },
-                                                onSetAppLock = { lock, bio -> viewModel.setAppLock(lock, bio) },
-                                                onExportBackup = { viewModel.exportBackup(it) },
-                                                onRestoreBackup = { viewModel.restoreBackup(it) }
-                                            )
+                                            Crossfade(
+                                                targetState = studioSubScreen,
+                                                label = "studio_subscreen_crossfade"
+                                            ) { sub ->
+                                                when (sub) {
+                                                    StudioSubScreen.NONE -> ThemeStudioAndSettingsScreen(
+                                                        preferences = prefs,
+                                                        onSelectThemePreset = { viewModel.setThemePreset(it) },
+                                                        onSelectAccentColor = { viewModel.setAccentColor(it) },
+                                                        onSelectBackgroundMode = { viewModel.setBackgroundMode(it) },
+                                                        onSetCardTransparency = { viewModel.setCardTransparency(it) },
+                                                        onSetBlurIntensity = { viewModel.setBlurIntensity(it) },
+                                                        onSelectPopupStyle = { viewModel.setPopupStyle(it) },
+                                                        onPreviewPopup = { viewModel.triggerPopupPreview() },
+                                                        onToggleConnectionPopup = { viewModel.setConnectionPopupEnabled(it) },
+                                                        onSelectAnimationSpeed = { viewModel.setAnimationSpeed(it) },
+                                                        onSelectIconStyle = { viewModel.setIconStyle(it) },
+                                                        onMoveHomeCard = { idx, dir -> viewModel.moveHomeCard(idx, dir) },
+                                                        onSetCustomWallpaper = { viewModel.setCustomWallpaper(it) },
+                                                        onResetTheme = { viewModel.resetThemeDefaults() },
+                                                        onToggleSmartReconnect = { viewModel.setSmartReconnect(it) },
+                                                        onToggleNotifications = { viewModel.setNotificationsEnabled(it) },
+                                                        onToggleLowBatteryAlerts = { viewModel.setLowBatteryAlerts(it) },
+                                                        onSelectLanguage = { viewModel.setLanguageCode(it) },
+                                                        onSetAppLock = { lock, bio -> viewModel.setAppLock(lock, bio) },
+                                                        onExportBackup = { viewModel.exportBackup(it) },
+                                                        onRestoreBackup = { viewModel.restoreBackup(it) },
+                                                        updateAvailableTag = (updateCheckState as? UpdateCheckState.UpdateAvailable)?.release?.tagName,
+                                                        onOpenHapticsSettings = {
+                                                            viewModel.triggerHaptic(com.example.haptics.HapticEvent.BUTTON_CLICK)
+                                                            studioSubScreen = StudioSubScreen.HAPTICS
+                                                        },
+                                                        onOpenUpdateCenter = {
+                                                            viewModel.triggerHaptic(com.example.haptics.HapticEvent.BUTTON_CLICK)
+                                                            studioSubScreen = StudioSubScreen.UPDATE_CENTER
+                                                        }
+                                                    )
+                                                    StudioSubScreen.HAPTICS -> HapticsSettingsScreen(
+                                                        settings = prefs.hapticsSettings,
+                                                        capabilities = hapticCapabilities,
+                                                        onBack = { studioSubScreen = StudioSubScreen.NONE },
+                                                        onRefreshCapabilities = { viewModel.refreshHapticCapabilities() },
+                                                        onSetMasterEnabled = { viewModel.setHapticsMasterEnabled(it) },
+                                                        onSetIntensity = { viewModel.setHapticIntensity(it) },
+                                                        onSetRespectSystem = { viewModel.setHapticsRespectSystem(it) },
+                                                        onSetBatterySaver = { viewModel.setHapticsBatterySaver(it) },
+                                                        onSetPulseDuration = { viewModel.setHapticsPulseDuration(it) },
+                                                        onSetFeatureToggles = { conn, anc, ui, upd, alrt ->
+                                                            viewModel.setHapticsFeatureToggles(conn, anc, ui, upd, alrt)
+                                                        },
+                                                        onPreviewHaptic = { viewModel.previewHaptic(it) }
+                                                    )
+                                                    StudioSubScreen.UPDATE_CENTER -> UpdateCenterScreen(
+                                                        preferences = prefs,
+                                                        updateCheckState = updateCheckState,
+                                                        downloadState = downloadState,
+                                                        updateHistory = updateHistory,
+                                                        onBack = { studioSubScreen = StudioSubScreen.NONE },
+                                                        onCheckForUpdates = { viewModel.checkForUpdates(manual = true) },
+                                                        onToggleAutoCheck = { viewModel.setAutoUpdateCheck(it) },
+                                                        onStartOrResumeDownload = { viewModel.startOrResumeDownload() },
+                                                        onPauseDownload = { viewModel.pauseDownload() },
+                                                        onRetryDownload = { viewModel.retryDownload() },
+                                                        onClearDownloads = { viewModel.clearDownloadedUpdate() },
+                                                        onInstallVerifiedApk = { viewModel.launchVerifiedInstaller(context) },
+                                                        onOpenInstallPermissionSettings = { viewModel.openInstallPermissionSettings(context) },
+                                                        onUpdateGitHubSource = { owner, repo -> viewModel.setGitHubSource(owner, repo) },
+                                                        onClearHistory = { viewModel.clearUpdateHistory() }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -486,6 +568,23 @@ fun KaranBudsAppRoot(viewModel: KaranBudsViewModel) {
                     )
                 }
             }
+        }
+
+        // Update Available Dialog (when a newer official GitHub Release is found)
+        val availState = updateCheckState as? UpdateCheckState.UpdateAvailable
+        if (showUpdateDialog && availState != null && prefs.onboardingCompleted && isUnlocked && !showSplash) {
+            UpdateAvailableDialog(
+                release = availState.release,
+                downloadState = downloadState,
+                onUpdateNow = { viewModel.startOrResumeDownload() },
+                onLater = { viewModel.dismissUpdateDialog(later = true) },
+                onOpenUpdateCenter = {
+                    viewModel.dismissUpdateDialog(later = false)
+                    currentTab = MainNavTab.STUDIO
+                    studioSubScreen = StudioSubScreen.UPDATE_CENTER
+                },
+                onInstallVerified = { viewModel.launchVerifiedInstaller(context) }
+            )
         }
     }
 }

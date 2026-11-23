@@ -9,8 +9,12 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.BuildConfig
+import com.example.haptics.HapticIntensity
+import com.example.haptics.HapticsSettings
 import com.example.ui.theme.AnimationSpeed
 import com.example.ui.theme.BackgroundMode
 import com.example.ui.theme.HomeCardId
@@ -56,7 +60,14 @@ data class UserPreferencesState(
     val audioBalance: Float = 0.0f,
     val soundStageWidth: Float = 0.45f,
     val virtualSurroundEnabled: Boolean = false,
-    val spatialProfile: String = "Music"
+    val spatialProfile: String = "Music",
+    val hapticsSettings: HapticsSettings = HapticsSettings(),
+    val autoUpdateCheck: Boolean = true,
+    val lastUpdateCheckedMs: Long = 0L,
+    val lastNotifiedUpdateTag: String = "",
+    val dismissedUpdateTag: String = "",
+    val githubOwner: String = BuildConfig.GITHUB_OWNER,
+    val githubRepo: String = BuildConfig.GITHUB_REPO
 )
 
 class KaranPreferencesRepository(private val context: Context) {
@@ -95,6 +106,26 @@ class KaranPreferencesRepository(private val context: Context) {
         val SOUNDSTAGE_WIDTH = floatPreferencesKey("soundstage_width")
         val VIRTUAL_SURROUND = booleanPreferencesKey("virtual_surround")
         val SPATIAL_PROFILE = stringPreferencesKey("spatial_profile")
+
+        // Haptics Engine
+        val HAPTICS_MASTER = booleanPreferencesKey("haptics_master")
+        val HAPTICS_INTENSITY = stringPreferencesKey("haptics_intensity")
+        val HAPTICS_RESPECT_SYSTEM = booleanPreferencesKey("haptics_respect_system")
+        val HAPTICS_BATTERY_SAVER = booleanPreferencesKey("haptics_battery_saver")
+        val HAPTICS_CONNECTION = booleanPreferencesKey("haptics_connection")
+        val HAPTICS_ANC_SPATIAL = booleanPreferencesKey("haptics_anc_spatial")
+        val HAPTICS_UI_THEME = booleanPreferencesKey("haptics_ui_theme")
+        val HAPTICS_UPDATE = booleanPreferencesKey("haptics_update")
+        val HAPTICS_ALERTS = booleanPreferencesKey("haptics_alerts")
+        val HAPTICS_PULSE_MS = intPreferencesKey("haptics_pulse_ms")
+
+        // Auto Updater
+        val UPDATE_AUTO_CHECK = booleanPreferencesKey("update_auto_check")
+        val UPDATE_LAST_CHECKED_MS = longPreferencesKey("update_last_checked_ms")
+        val UPDATE_LAST_NOTIFIED_TAG = stringPreferencesKey("update_last_notified_tag")
+        val UPDATE_DISMISSED_TAG = stringPreferencesKey("update_dismissed_tag")
+        val UPDATE_GITHUB_OWNER = stringPreferencesKey("update_github_owner")
+        val UPDATE_GITHUB_REPO = stringPreferencesKey("update_github_repo")
     }
 
     val preferencesFlow: Flow<UserPreferencesState> = context.karanDataStore.data.map { prefs ->
@@ -168,7 +199,27 @@ class KaranPreferencesRepository(private val context: Context) {
             audioBalance = prefs[Keys.AUDIO_BALANCE] ?: 0f,
             soundStageWidth = prefs[Keys.SOUNDSTAGE_WIDTH] ?: 0.45f,
             virtualSurroundEnabled = prefs[Keys.VIRTUAL_SURROUND] ?: false,
-            spatialProfile = prefs[Keys.SPATIAL_PROFILE] ?: "Music"
+            spatialProfile = prefs[Keys.SPATIAL_PROFILE] ?: "Music",
+            hapticsSettings = HapticsSettings(
+                masterEnabled = prefs[Keys.HAPTICS_MASTER] ?: true,
+                intensity = runCatching {
+                    HapticIntensity.valueOf(prefs[Keys.HAPTICS_INTENSITY] ?: HapticIntensity.MEDIUM.name)
+                }.getOrDefault(HapticIntensity.MEDIUM),
+                respectSystemVibration = prefs[Keys.HAPTICS_RESPECT_SYSTEM] ?: true,
+                batterySaverMode = prefs[Keys.HAPTICS_BATTERY_SAVER] ?: false,
+                connectionHaptics = prefs[Keys.HAPTICS_CONNECTION] ?: true,
+                ancSpatialHaptics = prefs[Keys.HAPTICS_ANC_SPATIAL] ?: true,
+                uiThemeHaptics = prefs[Keys.HAPTICS_UI_THEME] ?: true,
+                updateHaptics = prefs[Keys.HAPTICS_UPDATE] ?: true,
+                alertErrorHaptics = prefs[Keys.HAPTICS_ALERTS] ?: true,
+                customPulseDurationMs = prefs[Keys.HAPTICS_PULSE_MS] ?: 24
+            ),
+            autoUpdateCheck = prefs[Keys.UPDATE_AUTO_CHECK] ?: true,
+            lastUpdateCheckedMs = prefs[Keys.UPDATE_LAST_CHECKED_MS] ?: 0L,
+            lastNotifiedUpdateTag = prefs[Keys.UPDATE_LAST_NOTIFIED_TAG] ?: "",
+            dismissedUpdateTag = prefs[Keys.UPDATE_DISMISSED_TAG] ?: "",
+            githubOwner = prefs[Keys.UPDATE_GITHUB_OWNER]?.takeIf { it.isNotBlank() } ?: BuildConfig.GITHUB_OWNER,
+            githubRepo = prefs[Keys.UPDATE_GITHUB_REPO]?.takeIf { it.isNotBlank() } ?: BuildConfig.GITHUB_REPO
         )
     }
 
@@ -303,6 +354,67 @@ class KaranPreferencesRepository(private val context: Context) {
             it[Keys.CARD_TRANSPARENCY] = 0.72f
             it[Keys.BLUR_INTENSITY] = 0.65f
             it[Keys.CUSTOM_WALLPAPER_URI] = ""
+        }
+    }
+
+    // --- Haptics Settings ---
+    suspend fun setHapticsMasterEnabled(enabled: Boolean) {
+        context.karanDataStore.edit { it[Keys.HAPTICS_MASTER] = enabled }
+    }
+
+    suspend fun setHapticIntensity(intensity: HapticIntensity) {
+        context.karanDataStore.edit { it[Keys.HAPTICS_INTENSITY] = intensity.name }
+    }
+
+    suspend fun setHapticsRespectSystem(respect: Boolean) {
+        context.karanDataStore.edit { it[Keys.HAPTICS_RESPECT_SYSTEM] = respect }
+    }
+
+    suspend fun setHapticsBatterySaver(enabled: Boolean) {
+        context.karanDataStore.edit { it[Keys.HAPTICS_BATTERY_SAVER] = enabled }
+    }
+
+    suspend fun setHapticsFeatureToggles(
+        connection: Boolean? = null,
+        ancSpatial: Boolean? = null,
+        uiTheme: Boolean? = null,
+        update: Boolean? = null,
+        alerts: Boolean? = null
+    ) {
+        context.karanDataStore.edit { prefs ->
+            connection?.let { prefs[Keys.HAPTICS_CONNECTION] = it }
+            ancSpatial?.let { prefs[Keys.HAPTICS_ANC_SPATIAL] = it }
+            uiTheme?.let { prefs[Keys.HAPTICS_UI_THEME] = it }
+            update?.let { prefs[Keys.HAPTICS_UPDATE] = it }
+            alerts?.let { prefs[Keys.HAPTICS_ALERTS] = it }
+        }
+    }
+
+    suspend fun setHapticsPulseDuration(ms: Int) {
+        context.karanDataStore.edit { it[Keys.HAPTICS_PULSE_MS] = ms.coerceIn(12, 48) }
+    }
+
+    // --- Auto Update Settings ---
+    suspend fun setAutoUpdateCheck(enabled: Boolean) {
+        context.karanDataStore.edit { it[Keys.UPDATE_AUTO_CHECK] = enabled }
+    }
+
+    suspend fun setLastUpdateCheckedMs(timestamp: Long) {
+        context.karanDataStore.edit { it[Keys.UPDATE_LAST_CHECKED_MS] = timestamp }
+    }
+
+    suspend fun setLastNotifiedUpdateTag(tag: String) {
+        context.karanDataStore.edit { it[Keys.UPDATE_LAST_NOTIFIED_TAG] = tag }
+    }
+
+    suspend fun setDismissedUpdateTag(tag: String) {
+        context.karanDataStore.edit { it[Keys.UPDATE_DISMISSED_TAG] = tag }
+    }
+
+    suspend fun setGitHubSource(owner: String, repo: String) {
+        context.karanDataStore.edit {
+            it[Keys.UPDATE_GITHUB_OWNER] = owner.trim()
+            it[Keys.UPDATE_GITHUB_REPO] = repo.trim()
         }
     }
 }

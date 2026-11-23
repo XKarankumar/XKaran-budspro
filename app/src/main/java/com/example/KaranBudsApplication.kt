@@ -8,13 +8,18 @@ import com.example.data.db.ConnectionEventEntity
 import com.example.data.db.KaranBudsDatabase
 import com.example.data.db.SavedDeviceEntity
 import com.example.data.prefs.KaranPreferencesRepository
+import com.example.haptics.HapticEvent
+import com.example.haptics.HapticsManager
 import com.example.location.DeviceFinderManager
 import com.example.system.BackupRestoreManager
 import com.example.system.BatteryNotificationManager
 import com.example.system.KaranBudsWidgetProvider
+import com.example.updater.ApkDownloaderAndVerifier
+import com.example.updater.GitHubReleaseChecker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class KaranBudsApplication : Application() {
@@ -35,6 +40,12 @@ class KaranBudsApplication : Application() {
         private set
     lateinit var backupRestoreManager: BackupRestoreManager
         private set
+    lateinit var hapticsManager: HapticsManager
+        private set
+    lateinit var releaseChecker: GitHubReleaseChecker
+        private set
+    lateinit var apkDownloader: ApkDownloaderAndVerifier
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +54,9 @@ class KaranBudsApplication : Application() {
         audioEngine = KaranAudioEngine(this)
         notificationManager = BatteryNotificationManager(this)
         backupRestoreManager = BackupRestoreManager(this, database, preferencesRepository)
+        hapticsManager = HapticsManager(this)
+        releaseChecker = GitHubReleaseChecker()
+        apkDownloader = ApkDownloaderAndVerifier(this)
 
         bluetoothController = BluetoothController(
             context = this,
@@ -91,6 +105,7 @@ class KaranBudsApplication : Application() {
                         state.overallBatteryPercent
                     )
                 }
+                hapticsManager.trigger(HapticEvent.CONNECTION)
                 KaranBudsWidgetProvider.refreshAllWidgets(this)
             },
             onDeviceDisconnectedRecord = { addr, name, brand, durationMs ->
@@ -113,6 +128,7 @@ class KaranBudsApplication : Application() {
                     )
                 )
                 KaranBudsWidgetProvider.refreshAllWidgets(this)
+                hapticsManager.trigger(HapticEvent.DISCONNECTION)
             },
             onBatterySampleRecord = { state, eventType ->
                 val addr = state.deviceAddress ?: return@BluetoothController
@@ -133,6 +149,7 @@ class KaranBudsApplication : Application() {
                 if (batt != null && batt <= prefs.lowBatteryThreshold && prefs.lowBatteryAlerts && prefs.notificationsEnabled) {
                     notificationManager.postLowBatteryNotification(state.deviceName, batt)
                     bluetoothController.checkLowBatteryPopup(prefs.lowBatteryThreshold)
+                    hapticsManager.trigger(HapticEvent.LOW_BATTERY)
                 }
                 KaranBudsWidgetProvider.refreshAllWidgets(this)
             }
@@ -149,6 +166,7 @@ class KaranBudsApplication : Application() {
 
         appScope.launch {
             val prefs = preferencesRepository.getSnapshot()
+            hapticsManager.updateSettings(prefs.hapticsSettings)
             val bands = prefs.eqBandsCsv.split(",").mapNotNull { it.toFloatOrNull() }
             audioEngine.applyProcessing(
                 bandsDb = bands,
@@ -160,6 +178,12 @@ class KaranBudsApplication : Application() {
                 soundStage = prefs.soundStageWidth,
                 virtualSurround = prefs.virtualSurroundEnabled
             )
+        }
+
+        appScope.launch {
+            preferencesRepository.preferencesFlow.collectLatest { prefs ->
+                hapticsManager.updateSettings(prefs.hapticsSettings)
+            }
         }
     }
 }

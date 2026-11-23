@@ -32,12 +32,51 @@ KARAN BUDS PREMIUM is a flagship-grade Bluetooth earbuds companion application f
    - Offline rule-based AI Audio Assistant requiring zero paid API keys.
 
 6. **Battery Intelligence, Find My Earbuds & System Integration**
-   - Room-backed Battery History & Connection History logs.
+   - Room-backed Battery History & Connection History logs (`KaranBudsDatabase` v2 with non-destructive `MIGRATION_1_2`).
    - Live BLE RSSI proximity scanner (`dBm`), Stereo Left/Right/Both acoustic chime finder, and permission-gated coarse last-known location.
    - Quick Settings Tile (`TileService`), Home Screen Widget (`AppWidgetProvider`), Android 13+ Notification Channels, Biometric App Lock, and SAF JSON Backup & Restore.
 
-7. **Real Hardware Rule**
+7. **Centralized Haptics Engine (`com.example.haptics`)**
+   - Uses `VibratorManager` (Android 12+) / `Vibrator` + `VibrationEffect` amplitude envelopes with `Light`, `Medium`, and `Strong` intensity levels.
+   - Respects Android system touch vibration and Battery Saver mode, with per-feature toggles (Connection, ANC/Spatial, UI/Theme, Updates, Low Battery & Errors) and an interactive Tactile Cue Preview Lab.
+
+8. **Verified GitHub Releases Auto-Updater (`com.example.updater`)**
+   - Checks official GitHub Releases via `https://api.github.com/repos/<owner>/<repo>/releases/latest` and compares SemVer + `versionCode`.
+   - Resumable HTTP `Range` downloads (Pause / Resume / Retry), mandatory SHA-256 verification, package identity & signing certificate verification, and safe handoff via `FileProvider` to Android's native Package Installer (never silent/bypassed installs).
+
+9. **Real Hardware Rule**
    - KARAN BUDS never fabricates battery numbers, GPS coordinates, or unsupported vendor ANC/firmware features. Any capability not exposed by the connected device's Bluetooth profile or Android API clearly displays `"Not supported by this device"`.
+
+---
+
+## Continuous Feature Update & Release Workflow
+
+### Package Modularity
+- `com.example.bluetooth`: Device state, brand detection, A2DP/HFP/LE Audio, BLE GATT
+- `com.example.audio`: 10-band Equalizer, Spatializer, Acoustic Audition player
+- `com.example.haptics`: `HapticsManager`, `HapticEvent`, `HapticsSettings`, intensity scaling
+- `com.example.updater`: `GitHubReleaseChecker`, `ApkDownloaderAndVerifier`, `SemVerComparator`, `BuiltInChangelog`
+- `com.example.data`: Room `KaranBudsDatabase` (with schema migrations) & DataStore `KaranPreferencesRepository`
+- `com.example.ui`: ViewModel, theme system (`KaranBudsTheme`), reusable glass components & screens
+
+### Releasing a New Version
+1. Update `version.properties` at the repository root (`VERSION_MAJOR`, `VERSION_MINOR`, `VERSION_PATCH`, `VERSION_CODE`, `GITHUB_OWNER`, `GITHUB_REPO`).
+2. Add release highlights to `CHANGELOG.md` and `BuiltInChangelog` (`UpdateModels.kt`).
+3. If adding Room tables/columns, increment `@Database(version = ...)` in `KaranBudsDatabase.kt` and add a `Migration(old, new)` so user settings and history are preserved.
+4. Commit and push to `main`, then create and push a matching version tag:
+   ```bash
+   git tag v1.1.0
+   git push origin v1.1.0
+   ```
+5. `.github/workflows/release.yml` automatically runs tests, builds the APK, computes `.sha256` and `version.json`, and publishes a GitHub Release ready for the in-app Update Center.
+
+### Optional GitHub Actions Signing Secrets
+To publish production-signed Release APKs from CI without committing keys:
+- `RELEASE_KEYSTORE_BASE64`: Base64-encoded `.jks` keystore (`keyAlias = "upload"`)
+- `STORE_PASSWORD`: Keystore password
+- `KEY_PASSWORD`: Key password
+
+If these secrets are not set, workflows gracefully build and upload Debug APKs without failing.
 
 ---
 
@@ -45,7 +84,7 @@ KARAN BUDS PREMIUM is a flagship-grade Bluetooth earbuds companion application f
 
 ### Prerequisites
 - Android Studio Ladybug / Meerkat or newer
-- JDK 17+ (Temurin 17 or 21 compatible with AGP 9.1.1 and Gradle 9.3.1; project compiles Java 11 bytecode)
+- JDK 17+ (Temurin 17 or 21 compatible with AGP 9.1.1 and Gradle 9.3.1)
 - Android SDK 36 (`minSdk = 24`, `targetSdk = 36`)
 
 ### Build Debug APK
@@ -65,6 +104,3 @@ Output: `app/build/outputs/apk/release/app-release.apk`
 ```bash
 ./gradlew :app:testDebugUnitTest
 ```
-
-### GitHub Actions CI
-Includes `.github/workflows/android-apk.yml` to automatically run unit tests and build Debug APKs on every push/pull request.
