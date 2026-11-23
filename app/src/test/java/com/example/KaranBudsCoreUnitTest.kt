@@ -1,6 +1,8 @@
 package com.example
 
 import com.example.ai.AudioAssistantEngine
+import com.example.audio.BuiltInEqPresets
+import com.example.audio.EqBandLabels
 import com.example.bluetooth.BrandDetector
 import com.example.bluetooth.BudsBrand
 import com.example.data.prefs.ListeningMode
@@ -32,5 +34,14 @@ class KaranBudsCoreUnitTest {
 
         val bassReply = AudioAssistantEngine.analyzePrompt("deep sub-bass edm")
         assertEquals("Deep Bass", bassReply.suggestion?.presetName)
+    }
+
+    @Test
+    fun `pro audio lab 10-band presets match 10 frequency bands`() {
+        assertEquals(10, EqBandLabels.size)
+        assertTrue(BuiltInEqPresets.isNotEmpty())
+        BuiltInEqPresets.forEach { preset ->
+            assertEquals("Preset ${preset.name} must have 10 EQ bands", 10, preset.bandsDb.size)
+        }
     }
 }

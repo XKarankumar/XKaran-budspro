@@ -2,5 +2,7 @@
   "name": "Karan Buds",
   "description": "Flagship Bluetooth earbuds companion app with live telemetry, brand detection, Apple-style popups, 10-band Pro Audio Lab, Spatial Audio Studio, Battery Intelligence, Find My Earbuds, and Theme Studio.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
