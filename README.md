@@ -45,7 +45,7 @@ KARAN BUDS PREMIUM is a flagship-grade Bluetooth earbuds companion application f
 
 ### Prerequisites
 - Android Studio Ladybug / Meerkat or newer
-- JDK 21 (Temurin 21 required for AGP 9.1.1, Gradle 9.3.1, and Robolectric Android 15/16 tests; project compiles Java 11 bytecode)
+- JDK 17+ (Temurin 17 or 21 compatible with AGP 9.1.1 and Gradle 9.3.1; project compiles Java 11 bytecode)
 - Android SDK 36 (`minSdk = 24`, `targetSdk = 36`)
 
 ### Build Debug APK
