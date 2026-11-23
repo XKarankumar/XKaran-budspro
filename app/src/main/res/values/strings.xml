@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Karan Buds</string>
+    <string name="brand_edition">PREMIUM</string>
+    <string name="brand_tagline">Ultimate Audio Experience</string>
+    <string name="brand_copyright">© Karan</string>
+    <string name="tile_label">Karan Buds</string>
+    <string name="widget_description">Live Bluetooth earbuds battery &amp; quick audio status</string>
+    <string name="notif_channel_battery_name">Battery Alerts</string>
+    <string name="notif_channel_battery_desc">Low battery and connection status alerts for earbuds</string>
+    <string name="notif_channel_connection_name">Device Connection</string>
+    <string name="notif_channel_connection_desc">Companion notifications when Bluetooth audio connects</string>
+</resources>
