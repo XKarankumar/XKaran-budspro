@@ -1,16 +1,30 @@
 package com.example
 
 import android.app.Application
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import com.example.data.prefs.UserPreferencesState
+import com.example.ui.screens.UpdateCenterScreen
+import com.example.ui.theme.KaranBudsTheme
+import com.example.updater.DownloadState
 import com.example.updater.GitHubReleaseChecker
 import com.example.updater.HttpFetchResponse
 import com.example.updater.ReleaseFetchOutcome
+import com.example.updater.ReleaseInfo
 import com.example.updater.SemVerComparator
+import com.example.updater.UpdateCheckState
 import com.example.updater.UpdateHttpClient
 import com.example.updater.UpdateManifestParser
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -19,6 +33,9 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class UpdaterRobolectricTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
 
     @Test
     fun `update checker treats repository with zero releases as NoReleasesPublished instead of error`() = runBlocking {
@@ -113,5 +130,90 @@ class UpdaterRobolectricTest {
         val checker = GitHubReleaseChecker(fakeClient)
         val outcome = checker.fetchLatestRelease("XKarankumar", "Nonexistent-Repo")
         assertTrue(outcome is ReleaseFetchOutcome.Error)
+    }
+
+    @Test
+    fun `update center ui renders No releases published yet and action buttons cleanly`() {
+        val prefs = UserPreferencesState()
+        composeRule.setContent {
+            KaranBudsTheme(config = prefs.themeConfig) {
+                UpdateCenterScreen(
+                    preferences = prefs,
+                    updateCheckState = UpdateCheckState.NoReleasesPublished(
+                        currentVersion = "1.1.0",
+                        repoSlug = "XKarankumar/Karan-buds-live-pro",
+                        releasesUrl = "https://github.com/XKarankumar/Karan-buds-live-pro/releases",
+                        lastCheckedMs = 1700000000000L
+                    ),
+                    downloadState = DownloadState.Idle,
+                    updateHistory = emptyList(),
+                    onBack = {},
+                    onCheckForUpdates = {},
+                    onToggleAutoCheck = {},
+                    onStartOrResumeDownload = {},
+                    onPauseDownload = {},
+                    onRetryDownload = {},
+                    onClearDownloads = {},
+                    onInstallVerifiedApk = {},
+                    onOpenInstallPermissionSettings = {},
+                    onUpdateGitHubSource = { _, _ -> },
+                    onClearHistory = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("No releases published yet").assertIsDisplayed()
+        composeRule.onNodeWithText("None yet").assertIsDisplayed()
+        composeRule.onNodeWithTag("check_updates_btn").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("open_github_releases_btn").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `update center ui renders valid available release and download trigger`() {
+        val prefs = UserPreferencesState()
+        val release = ReleaseInfo(
+            tagName = "v1.2.0",
+            versionName = "1.2.0",
+            versionCode = 3,
+            releaseName = "KARAN BUDS PREMIUM v1.2.0",
+            releaseNotes = "Flagship release update",
+            publishedAt = "2026-11-23T00:00:00Z",
+            htmlUrl = "https://github.com/XKarankumar/Karan-buds-live-pro/releases/tag/v1.2.0",
+            apkDownloadUrl = "https://github.com/XKarankumar/Karan-buds-live-pro/releases/download/v1.2.0/app.apk",
+            apkFileName = "karan-buds-live-pro-v1.2.0-release.apk",
+            apkSizeBytes = 12_500_000L,
+            sha256ChecksumUrl = "https://github.com/XKarankumar/Karan-buds-live-pro/releases/download/v1.2.0/app.apk.sha256",
+            expectedSha256 = "a".repeat(64)
+        )
+        composeRule.setContent {
+            KaranBudsTheme(config = prefs.themeConfig) {
+                UpdateCenterScreen(
+                    preferences = prefs,
+                    updateCheckState = UpdateCheckState.UpdateAvailable(
+                        currentVersion = "1.1.0",
+                        release = release,
+                        lastCheckedMs = 1700000000000L
+                    ),
+                    downloadState = DownloadState.Idle,
+                    updateHistory = emptyList(),
+                    onBack = {},
+                    onCheckForUpdates = {},
+                    onToggleAutoCheck = {},
+                    onStartOrResumeDownload = {},
+                    onPauseDownload = {},
+                    onRetryDownload = {},
+                    onClearDownloads = {},
+                    onInstallVerifiedApk = {},
+                    onOpenInstallPermissionSettings = {},
+                    onUpdateGitHubSource = { _, _ -> },
+                    onClearHistory = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("New Version Available (v1.2.0)").assertIsDisplayed()
+        composeRule.onNodeWithText("v1.2.0").assertIsDisplayed()
+        composeRule.onNodeWithTag("update_center_list").performScrollToNode(hasTestTag("download_update_btn"))
+        composeRule.onNodeWithText("Download Update").assertIsDisplayed()
     }
 }

@@ -84,12 +84,16 @@ class GitHubReleaseChecker(
 
         when (latestResponse.statusCode) {
             in 200..299 -> {
-                val parsed = parseReleaseJsonObject(
-                    json = JSONObject(latestResponse.body),
-                    owner = cleanOwner,
-                    repo = cleanRepo,
-                    releasesPageUrl = releasesPageUrl
-                )
+                val parsed = runCatching { JSONObject(latestResponse.body) }
+                    .getOrNull()
+                    ?.let { json ->
+                        parseReleaseJsonObject(
+                            json = json,
+                            owner = cleanOwner,
+                            repo = cleanRepo,
+                            releasesPageUrl = releasesPageUrl
+                        )
+                    }
                 return@withContext if (parsed != null) {
                     ReleaseFetchOutcome.Found(parsed)
                 } else {

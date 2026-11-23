@@ -104,7 +104,8 @@ fun UpdateCenterScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Transparent),
+            .background(Color.Transparent)
+            .testTag("update_center_list"),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -277,9 +278,9 @@ fun UpdateCenterScreen(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
                         onClick = onCheckForUpdates,
@@ -287,11 +288,11 @@ fun UpdateCenterScreen(
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = karan.accent, contentColor = Color.Black),
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .testTag("check_updates_btn")
                     ) {
                         Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (updateCheckState is UpdateCheckState.Idle) "Check Updates" else "Check Again",
                             fontWeight = FontWeight.Bold
@@ -304,11 +305,13 @@ fun UpdateCenterScreen(
                             }
                         },
                         shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.testTag("open_github_releases_btn")
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("open_github_releases_btn")
                     ) {
                         Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = "Open GitHub Releases", modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Releases")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Open GitHub Releases")
                     }
                 }
             }
